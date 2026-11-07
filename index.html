@@ -1,0 +1,1268 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>嘉義市動態島 18｜CHIAYI CITY · 23.48°N</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #bceeff;
+    font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif; }
+  #stage { position: fixed; inset: 0; cursor: grab; touch-action: none; }
+  #stage.dragging { cursor: grabbing; }
+  #labels { position: fixed; inset: 0; pointer-events: none; }
+  .lm-label {
+    position: absolute; left: 0; top: 0; pointer-events: auto; cursor: pointer; user-select: none;
+    white-space: nowrap; transform-origin: 50% 100%;
+    transition: background-color .2s, color .2s, box-shadow .2s, opacity .2s;
+  }
+  .lm-label::after { /* 小尖角 */
+    content: ""; position: absolute; left: 50%; bottom: -5px; width: 8px; height: 8px;
+    background: inherit; border-right: 1px solid rgb(226 232 240); border-bottom: 1px solid rgb(226 232 240);
+    transform: translateX(-50%) rotate(45deg);
+  }
+  .lm-label.active { box-shadow: 0 0 0 3px var(--c), 0 6px 18px rgba(0,0,0,.18); }
+  .lm-label.linked { box-shadow: 0 0 0 2px #e2361f88, 0 4px 12px rgba(0,0,0,.12); color: #c83e2b; }
+  .lm-label.dim { opacity: .4; }
+
+  /* Dock */
+  .dock-glass { background: rgba(251, 247, 238, .74); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2); }
+  .dock-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 13px; border-radius: 999px;
+    font-size: 13px; font-weight: 600; border: 1px solid #e3d9c6; background: rgba(255,255,255,.6); color: #6b6057;
+    transition: background-color .2s, color .2s, border-color .2s, transform .1s; }
+  .dock-btn:hover { background: rgba(255,255,255,.95); }
+  .dock-btn:active { transform: scale(.96); }
+  .dock-btn.on { background: #f8d7d2; color: #c83e2b; border-color: #f0b7ad; }
+  .dock-btn .ic { font-size: 14px; line-height: 1; }
+  .play-btn { width: 34px; height: 34px; border-radius: 999px; background: #c83e2b; color: #fff; font-size: 13px;
+    display: inline-flex; align-items: center; justify-content: center; flex: none; box-shadow: 0 3px 10px rgba(200,62,43,.35); transition: transform .1s; }
+  .play-btn:active { transform: scale(.94); }
+  #time { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 999px; outline: none; cursor: pointer;
+    background: linear-gradient(to right, #c83e2b 0%, #c83e2b var(--p, 40%), #e6dccb var(--p, 40%), #e6dccb 100%); }
+  #time::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #c83e2b;
+    border: 3px solid #fff; box-shadow: 0 1px 5px rgba(0,0,0,.3); }
+  #labels { z-index: 1; }
+  .glass-card { background: rgba(252,249,242,0.94); backdrop-filter: blur(14px) saturate(1.15); -webkit-backdrop-filter: blur(14px) saturate(1.15);
+    border: 1px solid #e8dfcc; border-radius: 20px; box-shadow: 0 8px 28px rgba(80,60,30,.12); }
+  .collapse-btn { width: 26px; height: 26px; border-radius: 999px; border: 1px solid #e3d9c6; background: rgba(255,255,255,.7); color: #8a7f6e;
+    font-size: 11px; display: inline-flex; align-items: center; justify-content: center; flex: none; transition: transform .25s, background-color .2s; }
+  .collapse-btn:hover { background: #fff; color: #c83e2b; }
+  .collapse-btn.closed { transform: rotate(180deg); }
+  .cat-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    border: 1px solid #e3d9c6; background: rgba(255,255,255,.45); color: #a39a8c; transition: all .2s; }
+  .cat-pill .dot { width: 9px; height: 9px; border-radius: 50%; background: #d3cabb; transition: background-color .2s; }
+  .cat-pill .cnt { font-size: 10px; color: #b3aa9c; }
+  .cat-pill.on { background: #fff; color: #3d3630; border-color: var(--c); }
+  .cat-pill.on .dot { background: var(--c); }
+  .mode-btn { padding: 6px 18px; border-radius: 999px; font-size: 13px; font-weight: 700; color: #8a7f6e; transition: all .2s; }
+  .mode-btn.on { background: #f8d7d2; color: #c83e2b; }
+  .live-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 800; letter-spacing: .08em;
+    color: #c83e2b; background: #fbe3df; padding: 3px 8px; border-radius: 999px; }
+  .live-badge i { width: 7px; height: 7px; border-radius: 50%; background: #e2361f; animation: pulse 1.4s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.7); } }
+  .log-list { max-height: 196px; overflow-y: auto; padding-right: 4px; scrollbar-width: thin; scrollbar-color: #e0d5c2 transparent; }
+  .log-item { display: flex; gap: 8px; font-size: 12.5px; line-height: 1.5; color: #5d544b; padding: 6px 4px; border-bottom: 1px dashed #ece4d4; cursor: pointer; border-radius: 6px; }
+  .log-item:hover { background: rgba(248,215,210,.35); }
+  .log-time { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 700; color: #c83e2b; flex: none; font-size: 12px; padding-top: 1px; }
+  .log-item.fresh { animation: fresh 1.4s ease-out; }
+  @keyframes fresh { from { background: rgba(248,215,210,.95); } to { background: transparent; } }
+  .cand-row { border-radius: 14px; padding: 8px 10px; background: rgba(255,255,255,.65); border: 1px solid #efe7d8; }
+  .gem { width: 11px; height: 11px; background: var(--c); transform: rotate(45deg); border-radius: 2px; flex: none; margin-top: 5px; box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--c); }
+  .cand-toggle { font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 999px; border: 1px solid #e3d9c6; color: #a39a8c; background: #fff; flex: none; }
+  .cand-toggle.on { background: #f8d7d2; color: #c83e2b; border-color: #f0b7ad; }
+  .cand-pols { margin-top: 6px; padding-left: 18px; }
+  .cand-pols li { font-size: 12px; line-height: 1.55; color: #5d544b; padding: 4px 6px; border-radius: 8px; cursor: pointer; }
+  .cand-pols li:hover, .cand-pols li.active { background: #f8ece6; }
+  #time::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #c83e2b; border: 3px solid #fff; box-shadow: 0 1px 5px rgba(0,0,0,.3); }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="labels"></div>
+
+<!-- 左上角主卡片 -->
+<div id="main-card" class="glass-card fixed top-4 left-4 w-[min(calc(100vw-165px),340px)] sm:w-[min(calc(100vw-200px),340px)] select-none z-20">
+  <div class="flex items-start gap-2 px-4 pt-3.5 pb-3">
+    <div class="flex-1 min-w-0">
+      <div class="text-[10px] sm:text-[11px] tracking-[0.1em] sm:tracking-[0.25em] whitespace-nowrap text-[#8a7f6e] font-semibold">CHIAYI CITY · 23.48°N</div>
+      <h1 class="text-[18px] sm:text-[22px] font-black text-[#3d3630] leading-tight mt-0.5">嘉義市動態島 <span class="text-[#c83e2b]">18</span></h1>
+    </div>
+    <button id="main-collapse" class="collapse-btn" aria-label="收合">∧</button>
+  </div>
+  <div id="main-body" class="px-4 pb-4 -mt-1">
+    <p class="text-[13px] leading-relaxed text-[#6b6057]">從北門驛的林鐵到蘭潭的水，一格一個地方。點一格，看它和哪些地方連在一起。</p>
+    <div id="cat-filters" class="flex flex-wrap gap-1.5 mt-3"></div>
+  </div>
+</div>
+
+<!-- 右上角：全景｜政見 -->
+<div class="fixed top-4 right-4 z-20 flex flex-col items-end gap-2 select-none">
+  <div class="glass-card !rounded-full p-1 flex gap-1">
+    <button class="mode-btn on" data-m="all">全景</button>
+    <button class="mode-btn" data-m="pol">政見</button>
+  </div>
+  <div id="pol-panel" class="glass-card hidden w-[min(92vw,340px)] max-h-[46vh] sm:max-h-[calc(100vh-150px)] overflow-y-auto">
+    <div class="px-4 pt-3 pb-2 sticky top-0 z-10 bg-[rgba(252,249,242,0.98)] rounded-t-[20px] border-b border-[#ece4d4]">
+      <div class="text-[10.5px] tracking-[0.2em] text-[#8a7f6e] font-semibold">2026 地方選舉・投票日 11/28</div>
+      <div class="font-black text-[16px] text-[#3d3630]">嘉義市長候選人</div>
+      <div class="text-[11px] text-[#8a7f6e]">依號次排列・點政見可定位到地標</div>
+    </div>
+    <div id="cand-list" class="px-3 py-2.5 space-y-1.5"></div>
+    <div class="mx-3 mb-3 rounded-xl bg-[#f3ede1] px-3 py-2.5 text-[11px] leading-relaxed text-[#7a6f60]">
+      <b class="text-[#5d544b]">免責聲明</b>：政見摘要整理自公開新聞報導，僅供參考，內容以候選人官方公布及中選會公告為準。地標對應與菱形顏色僅為示意，不代表任何政黨或立場，亦非支持或推薦任何候選人。未列政見者為所引報導中未見具體政見整理。
+      <div class="mt-1.5">出處：
+        <a class="underline hover:text-[#c83e2b]" target="_blank" rel="noopener" href="https://n.yam.com/Article/20261103422133">蕃新聞／報新聞〈嘉義市長政見對照〉2026-11-03</a>、
+        <a class="underline hover:text-[#c83e2b]" target="_blank" rel="noopener" href="https://city.gvm.com.tw/article/129222">遠見雜誌 2026-04-07</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 左下角：城市日誌 -->
+<div id="log-card" class="glass-card fixed left-4 bottom-4 w-[min(92vw,320px)] select-none z-10">
+  <div class="flex items-center gap-2 px-4 py-2.5">
+    <div class="flex-1 min-w-0">
+      <div class="text-[10px] tracking-[0.22em] text-[#8a7f6e] font-semibold">CITY LOG</div>
+      <div class="font-bold text-[14px] text-[#3d3630] leading-tight">城市日誌</div>
+    </div>
+    <span class="live-badge"><i></i>LIVE</span>
+    <button id="log-collapse" class="collapse-btn" aria-label="收合">∧</button>
+  </div>
+  <div id="log-body" class="px-4 pb-3">
+    <ul id="log-list" class="log-list"></ul>
+    <div class="text-[10.5px] text-[#a39a8c] mt-2 pt-2 border-t border-[#ece4d4]">日誌為依時段生成的情境示意，不是即時資料。</div>
+  </div>
+</div>
+
+<!-- 資訊卡 -->
+<div id="info" class="fixed left-1/2 -translate-x-1/2 bottom-5 w-[min(92vw,420px)] transition-all duration-300 opacity-0 translate-y-4 pointer-events-none">
+  <div class="bg-white rounded-2xl border border-slate-200 shadow-lg px-4 py-3">
+    <div class="flex items-center gap-2">
+      <span id="info-dot" class="inline-block w-2.5 h-2.5 rounded-full"></span>
+      <span id="info-cat" class="text-xs font-semibold"></span>
+      <button id="info-close" class="ml-auto text-slate-400 hover:text-slate-700 text-lg leading-none pointer-events-auto">×</button>
+    </div>
+    <div id="info-name" class="text-lg font-bold text-slate-800 mt-1"></div>
+    <div id="info-desc" class="text-sm text-slate-600 mt-0.5"></div>
+    <div id="info-links" class="text-xs text-[#c83e2b] mt-1.5"></div>
+  </div>
+</div>
+
+<!-- 底部中央控制列 Dock -->
+<div id="dock" class="fixed left-1/2 -translate-x-1/2 bottom-4 w-[min(96vw,880px)] select-none">
+  <div class="dock-glass rounded-[22px] border border-[#e8dfcc] shadow-lg px-4 pt-2 pb-3">
+    <div class="text-center text-[11px] text-[#8a7f6e] tracking-wider mb-2">拖曳旋轉 · 滾輪縮放 · 點一格開始探索</div>
+    <div class="flex flex-wrap items-center justify-center gap-2">
+      <button class="dock-btn on" data-k="labels"><span class="ic">▭</span>名牌</button>
+      <button class="dock-btn on" data-k="links"><span class="ic">☍</span>連結線</button>
+      <button class="dock-btn on" data-k="rail"><span class="ic">🚆</span>林鐵</button>
+      <button class="dock-btn" data-k="spin"><span class="ic">↻</span>自轉</button>
+      <button class="dock-btn" data-k="bird"><span class="ic">⊕</span>鳥瞰</button>
+      <div class="w-px h-7 bg-[#e3d9c6] mx-1 hidden sm:block"></div>
+      <div class="flex items-center gap-2.5 flex-1 min-w-[230px] max-w-[340px]">
+        <span id="time-label" class="font-mono tabular-nums text-[15px] font-bold text-[#4a423b] w-12 text-center">10:05</span>
+        <input id="time" type="range" min="360" max="1380" step="1" value="605" class="flex-1" aria-label="時間" />
+        <button id="play" class="play-btn" aria-label="播放">▶</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---------------- 基本場景 ----------------
+  const stage = document.getElementById('stage');
+  const labelsLayer = document.getElementById('labels');
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  stage.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color('#bceeff');
+  scene.fog = new THREE.Fog('#bceeff', 45, 90);
+
+  const camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.1, 200);
+
+  // 柔和暖白環境光
+  const hemi = new THREE.HemisphereLight('#fff6e8', '#b9d3c4', 0.5); scene.add(hemi);
+  const amb = new THREE.AmbientLight('#fff4e0', 0.12); scene.add(amb);
+  // 太陽光（陰影）
+  const sun = new THREE.DirectionalLight('#fff1d6', 0.72);
+  sun.position.set(10, 18, 8);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.left = -14; sun.shadow.camera.right = 14;
+  sun.shadow.camera.top = 14; sun.shadow.camera.bottom = -14;
+  sun.shadow.camera.near = 1; sun.shadow.camera.far = 50;
+  sun.shadow.bias = -0.0008;
+  sun.shadow.radius = 3;
+  scene.add(sun);
+
+  const island = new THREE.Group();
+  scene.add(island);
+
+  // ---------------- 小工具 ----------------
+  const M = (c, o = {}) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.78, metalness: 0 }, o));
+  function add(g, mesh) { g.add(mesh); return mesh; }
+  function box(g, w, h, d, c, x = 0, y = 0, z = 0, o) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), M(c, o)); m.position.set(x, y + h / 2, z); return add(g, m);
+  }
+  function cyl(g, rt, rb, h, c, x = 0, y = 0, z = 0, seg = 24, o) {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), M(c, o)); m.position.set(x, y + h / 2, z); return add(g, m);
+  }
+  function cone(g, r, h, c, x = 0, y = 0, z = 0, seg = 16, o) {
+    const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, seg), M(c, o)); m.position.set(x, y + h / 2, z); return add(g, m);
+  }
+  function sph(g, r, c, x = 0, y = 0, z = 0, o) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), M(c, o)); m.position.set(x, y, z); return add(g, m);
+  }
+  // 人字形屋頂（三角柱），w=寬, d=深, h=高；底部位於 y
+  function gable(g, w, d, h, c, x = 0, y = 0, z = 0, rotY = 0) {
+    const s = new THREE.Shape(); s.moveTo(-w / 2, 0); s.lineTo(w / 2, 0); s.lineTo(0, h); s.lineTo(-w / 2, 0);
+    const geo = new THREE.ExtrudeGeometry(s, { depth: d, bevelEnabled: false }); geo.translate(0, 0, -d / 2);
+    const m = new THREE.Mesh(geo, M(c)); m.position.set(x, y, z); m.rotation.y = rotY; return add(g, m);
+  }
+  // 四角攢尖屋頂
+  function hip(g, w, d, h, c, x = 0, y = 0, z = 0) {
+    const m = new THREE.Mesh(new THREE.ConeGeometry(0.7071, h, 4), M(c));
+    m.rotation.y = Math.PI / 4; m.scale.set(w, 1, d); m.position.set(x, y + h / 2, z); return add(g, m);
+  }
+  function tree(g, x, z, s = 1, c = '#5aa469') {
+    cyl(g, 0.025 * s, 0.03 * s, 0.1 * s, '#8a5a3b', x, 0, z, 6);
+    cone(g, 0.12 * s, 0.3 * s, c, x, 0.08 * s, z, 7);
+  }
+  // 種子亂數（讓每次載入的配置一致）
+  let seed = 23480;
+  const rand = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+
+  // ---------------- 島嶼底座 ----------------
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(11, 11, 1.2, 96), M('#d9b88c'));
+  base.position.y = -0.6; island.add(base);
+  const base2 = new THREE.Mesh(new THREE.CylinderGeometry(10.6, 9.6, 1.4, 96), M('#c7a274'));
+  base2.position.y = -1.9; island.add(base2);
+  const base3 = new THREE.Mesh(new THREE.CylinderGeometry(9.6, 7.8, 1.0, 96), M('#b48e62'));
+  base3.position.y = -3.1; island.add(base3);
+  // 沙岸上零星小石與樹（棋盤以外的區域）
+  const fillers = [], sandDeco = [], houseMats = [];
+  for (let i = 0; i < 26; i++) {
+    const a = rand() * Math.PI * 2, r = 7.8 + rand() * 2.7;
+    const dg = new THREE.Group(); island.add(dg);
+    const px = Math.cos(a) * r, pz = Math.sin(a) * r;
+    if (rand() < 0.55) tree(dg, px, pz, 1.2 + rand() * 0.8, rand() < 0.5 ? '#6fb36f' : '#88c27a');
+    else sph(dg, 0.12 + rand() * 0.12, '#cdb08a', px, 0.04, pz).scale.y = 0.6;
+    sandDeco.push({ g: dg, x: px, z: pz });
+  }
+
+  // ---------------- 地標資料 ----------------
+  const CATS = {
+    rail:  { name: '林業鐵道', color: '#d4822a' },
+    old:   { name: '舊城滋味', color: '#d15b3e' },
+    park:  { name: '公園綠水', color: '#3b8a5a' },
+    art:   { name: '藝文再生', color: '#7859b8' },
+    city:  { name: '城市發展', color: '#6b6057' },
+  };
+
+  // x：東(+)西(-)；z：南(+)北(-)
+  const LANDMARKS = [
+    { name: '北門驛',               cat: 'rail', x: 1,  z: -4, build: bBeimen,     desc: '阿里山林業鐵路的檜木造車站，林鐵記憶的起點。' },
+    { name: '玉山旅社',             cat: 'rail', x: 3,  z: -5, build: bYushan,     desc: '北門驛旁的老木造旅社，如今是咖啡與書店空間。' },
+    { name: '阿里山林業鐵路車庫園區', cat: 'rail', x: -1, z: -6, build: bGarage,     desc: '保存蒸汽火車頭與檜木車廂的鐵道園區。', reserve: true },
+    { name: '檜意森活村',           cat: 'rail', x: 3,  z: -2, build: bHinoki,     desc: '日治時期林業宿舍群，整片日式木屋聚落。' },
+    { name: '嘉義製材所',           cat: 'rail', x: -2, z: -4, build: bSawmill,    desc: '昔日的大型製材工廠，見證木都產業史。' },
+    { name: '中央噴水池',           cat: 'old',  x: 0,  z: 0,  build: bFountain,   desc: '城市中心的圓環地標，各大街道由此放射。' },
+    { name: '文化路夜市',           cat: 'old',  x: 0,  z: -2, build: bNightMkt,   desc: '雞肉飯與各式小吃聚集的熱鬧夜市。' },
+    { name: '東市場',               cat: 'old',  x: 2,  z: 1,  build: bEastMkt,    desc: '百年傳統市場，在地早餐與老味道。' },
+    { name: '嘉義城隍廟',           cat: 'old',  x: -2, z: -1, build: bTemple,     desc: '香火鼎盛的古廟，紅色飛簷屋頂。' },
+    { name: '嘉義公園・射日塔',      cat: 'park', x: 5,  z: -2, build: bTower,      desc: '嘉義公園內的高塔，可登高眺望整座城市。' },
+    { name: '蘭潭',                 cat: 'park', x: 5,  z: 2,  build: bLantan,     desc: '嘉義八景「蘭潭泛月」，城市東側的湖泊。', reserve: true },
+    { name: '嘉義市立棒球場',        cat: 'park', x: 5,  z: -5, build: bBaseball,   desc: '承載嘉農棒球記憶的城市球場。', reserve: true },
+    { name: '森林之歌',             cat: 'art',  x: -4, z: -4, build: bForestSong, desc: '以木材構築的大型公共藝術地景。' },
+    { name: '嘉義市立美術館',        cat: 'art',  x: -2, z: 2,  build: bMuseum,     desc: '由日治時期紅磚建築改造的美術館。' },
+    { name: '嘉義舊監獄',           cat: 'art',  x: -5, z: -1, build: bPrison,     desc: '扇形放射狀配置的日治監獄建築。' },
+    { name: '嘉義文化創意產業園區',   cat: 'art',  x: -4, z: 4,  build: bCreative,   desc: '舊酒廠倉庫改建的文創基地。' },
+    { name: '交趾陶館',             cat: 'art',  x: 2,  z: 4,  build: bKoji,       desc: '展示色彩繽紛的嘉義交趾陶工藝。' },
+    { name: '嘉義車站',             cat: 'city', x: -4, z: 1,  build: bStation,    desc: '城市的鐵道門戶，台鐵與林鐵在此交會。' },
+    { name: '嘉義市政府',           cat: 'city', x: 0,  z: 3,  build: bCityHall,   desc: '城市行政中心。' },
+    { name: '往高鐵嘉義站',          cat: 'city', x: 0,  z: 6,  build: bHSR,        desc: '通往太保市高鐵嘉義站的交通廊道。' },
+    { name: '北港路・後湖工業區',     cat: 'city', x: 4,  z: 4,  build: bIndustry,   desc: '城市產業與物流發展帶。' },
+  ];
+
+  // ---------------- 棋盤網格 ----------------
+  const TILE_H = 0.2;
+  const lmAt = new Map(LANDMARKS.map((l, i) => [l.x + ',' + l.z, i]));
+  const reserved = new Set();
+  LANDMARKS.forEach(l => {
+    reserved.add(l.x + ',' + l.z);
+    if (l.reserve) for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) reserved.add((l.x + dx) + ',' + (l.z + dz));
+  });
+
+  const tileGeo = new THREE.BoxGeometry(0.96, TILE_H, 0.96);
+  const matCream = M('#f2ebd9'), matGrass = M('#cbe096');
+  const roofColors = ['#e8a08f', '#9cc3e6', '#b6a6dd', '#f3c58f', '#a6cf95', '#d9d2c6'];
+
+  for (let x = -7; x <= 7; x++) {
+    for (let z = -7; z <= 7; z++) {
+      if (Math.hypot(x, z) > 6.6) continue;
+      const key = x + ',' + z;
+      const isLm = lmAt.has(key);
+      let mat = (x + z) % 2 === 0 ? matCream : matGrass;
+      if (isLm) {
+        const c = new THREE.Color(CATS[LANDMARKS[lmAt.get(key)].cat].color);
+        mat = M(c.clone().lerp(new THREE.Color('#ffffff'), 0.55));
+      }
+      const t = new THREE.Mesh(tileGeo, mat);
+      t.position.set(x, TILE_H / 2, z);
+      island.add(t);
+
+      // 非地標空位：隨機白色小房子 / 綠色小樹
+      if (!reserved.has(key)) {
+        const r = rand();
+        const ox = (rand() - 0.5) * 0.3, oz = (rand() - 0.5) * 0.3;
+        if (r < 0.34) {
+          const g = new THREE.Group(); g.position.set(x + ox, TILE_H, z + oz); g.rotation.y = Math.floor(rand() * 4) * Math.PI / 2;
+          const w = 0.26 + rand() * 0.12, h = 0.2 + rand() * 0.18;
+          houseMats.push(box(g, w, h, w * 0.9, '#ffffff').material);
+          if (rand() < 0.65) gable(g, w + 0.04, w * 0.9 + 0.04, 0.12, roofColors[Math.floor(rand() * roofColors.length)], 0, h, 0);
+          island.add(g); fillers.push({ g, x: x + ox, z: z + oz });
+        } else if (r < 0.7) {
+          const g = new THREE.Group(); g.position.set(x, TILE_H, z);
+          tree(g, ox, oz, 0.9 + rand() * 0.5);
+          if (rand() < 0.4) tree(g, -ox * 1.4 + 0.18, -oz * 1.4 - 0.12, 0.6 + rand() * 0.3, '#7cbf6e');
+          island.add(g); fillers.push({ g, x, z });
+        }
+      }
+    }
+  }
+
+  // ---------------- 18 地標建模函式（皆以格子頂面為 y=0） ----------------
+  function bBeimen(g) {
+    box(g, 1.0, 0.03, 0.26, '#cfcfcf', 0, 0, 0.36);                    // 月台
+    box(g, 0.98, 0.015, 0.03, '#6b5a4a', 0, 0, 0.44); box(g, 0.98, 0.015, 0.03, '#6b5a4a', 0, 0, 0.3);
+    box(g, 0.72, 0.36, 0.44, '#a8683a', 0, 0, -0.1);                   // 檜木站體
+    box(g, 0.16, 0.22, 0.02, '#5a3a22', 0, 0, 0.125);                  // 門
+    box(g, 0.12, 0.1, 0.02, '#f6e7c8', -0.22, 0.14, 0.125); box(g, 0.12, 0.1, 0.02, '#f6e7c8', 0.22, 0.14, 0.125);
+    gable(g, 0.84, 0.56, 0.24, '#5b3d2b', 0, 0.36, -0.1);
+    return 0.7;
+  }
+  function bYushan(g) {
+    box(g, 0.62, 0.56, 0.5, '#b37b4b');
+    for (let i = -1; i <= 1; i++) for (let j = 0; j < 2; j++) box(g, 0.12, 0.1, 0.02, '#fbefd5', i * 0.19, 0.12 + j * 0.24, 0.255);
+    box(g, 0.7, 0.03, 0.56, '#4d4d4d', 0, 0.28, 0);                    // 腰簷
+    gable(g, 0.72, 0.6, 0.28, '#4a4a4a', 0, 0.56, 0);
+    return 0.92;
+  }
+  function bGarage(g) {
+    box(g, 1.3, 0.34, 0.6, '#8d5c3a', 0, 0, -0.35);
+    gable(g, 1.4, 0.7, 0.2, '#5b4636', 0, 0.34, -0.35, Math.PI / 2 * 0);
+    for (let i = 0; i < 3; i++) box(g, 0.28, 0.24, 0.02, '#3b2a20', -0.42 + i * 0.42, 0, -0.04);
+    for (let i = 0; i < 2; i++) box(g, 1.6, 0.015, 0.03, '#6b5a4a', 0, 0, 0.3 + i * 0.12);   // 軌道
+    // 蒸汽火車頭
+    const loco = new THREE.Group(); loco.position.set(0.15, 0.02, 0.36); g.add(loco);
+    const boiler = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.42, 16), M('#2e2e2e'));
+    boiler.rotation.z = Math.PI / 2; boiler.position.set(0, 0.15, 0); loco.add(boiler);
+    box(loco, 0.18, 0.24, 0.2, '#b23a2c', -0.27, 0, 0);
+    box(loco, 0.22, 0.03, 0.24, '#2e2e2e', -0.27, 0.24, 0);
+    cyl(loco, 0.04, 0.03, 0.12, '#2e2e2e', 0.13, 0.22, 0, 10);
+    box(loco, 0.6, 0.05, 0.18, '#444', -0.06, 0, 0);
+    g.userData.update = (t) => { loco.position.x = 0.15 + Math.sin(t * 0.6) * 0.18; };
+    return 0.62;
+  }
+  function bHinoki(g) {
+    const pos = [[-0.24, -0.22], [0.24, -0.22], [-0.24, 0.22], [0.24, 0.22]];
+    pos.forEach(([x, z], i) => {
+      const h = 0.2 + (i % 2) * 0.06;
+      box(g, 0.32, h, 0.3, i % 2 ? '#c99b66' : '#b98a58', x, 0, z);
+      box(g, 0.08, 0.12, 0.01, '#5a3a22', x, 0, z + 0.155);
+      gable(g, 0.38, 0.36, 0.14, '#3e3a3a', x, h, z);
+    });
+    tree(g, 0, 0, 0.7, '#4f9a5e');
+    return 0.55;
+  }
+  function bSawmill(g) {
+    box(g, 0.86, 0.34, 0.56, '#9c7b5b', 0, 0, -0.08);
+    for (let i = 0; i < 3; i++) gable(g, 0.29, 0.58, 0.16, '#6a5240', -0.29 + i * 0.29, 0.34, -0.08);
+    cyl(g, 0.055, 0.075, 0.95, '#8a4b38', 0.34, 0, -0.26, 12);
+    box(g, 0.08, 0.03, 0.08, '#fff', 0.34, 0.75, -0.26);
+    for (let i = 0; i < 3; i++) {
+      const log = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.5, 10), M('#c49a6c'));
+      log.rotation.z = Math.PI / 2; log.position.set(-0.05, 0.05 + (i === 2 ? 0.085 : 0), 0.32 + (i === 2 ? 0 : (i - 0.5) * 0.1));
+      g.add(log);
+    }
+    return 0.98;
+  }
+  function bFountain(g) {
+    cyl(g, 0.47, 0.49, 0.12, '#f4f1ea', 0, 0, 0, 40);
+    cyl(g, 0.41, 0.41, 0.13, '#68c9ec', 0, 0, 0, 40, { roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.9 });
+    cyl(g, 0.06, 0.09, 0.42, '#e4e0d6', 0, 0, 0, 16);
+    cyl(g, 0.17, 0.12, 0.05, '#e4e0d6', 0, 0.3, 0, 24);
+    const drops = [];
+    for (let i = 0; i < 10; i++) {
+      const d = sph(g, 0.03, '#d4f6ff', 0, 0.45, 0, { emissive: '#7fdcff', emissiveIntensity: 0.3, transparent: true, opacity: 0.85 });
+      d.castShadow = false; drops.push(d);
+    }
+    g.userData.update = (t) => {
+      drops.forEach((d, i) => {
+        const p = ((t * 0.7 + i / drops.length) % 1);
+        const a = i / drops.length * Math.PI * 2;
+        const r = p * 0.3;
+        d.position.set(Math.cos(a) * r, 0.48 + Math.sin(p * Math.PI) * 0.22 - p * 0.18, Math.sin(a) * r);
+      });
+    };
+    return 0.78;
+  }
+  function bNightMkt(g) {
+    const canopy = ['#e5533d', '#f2b632', '#ef8a3a', '#e5533d', '#f2b632', '#ef8a3a'];
+    let k = 0;
+    for (let i = -1; i <= 1; i++) for (const zz of [-0.24, 0.24]) {
+      box(g, 0.22, 0.17, 0.2, '#fff6df', i * 0.29, 0, zz);
+      box(g, 0.27, 0.035, 0.26, canopy[k++], i * 0.29, 0.17, zz);
+    }
+    for (let i = 0; i < 7; i++) sph(g, 0.035, '#ff4a3a', -0.42 + i * 0.14, 0.3, 0, { emissive: '#ff6a3a', emissiveIntensity: 0.6 });
+    box(g, 0.9, 0.006, 0.006, '#333', 0, 0.33, 0);
+    return 0.48;
+  }
+  function bEastMkt(g) {
+    box(g, 0.88, 0.28, 0.68, '#e1cda6');
+    const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.94, 20, 1, false, 0, Math.PI), M('#c4523c', { side: THREE.DoubleSide }));
+    roof.rotation.z = Math.PI / 2; roof.scale.set(1, 1, 0.55); roof.position.set(0, 0.28, 0); g.add(roof);
+    box(g, 0.34, 0.08, 0.02, '#fff6df', 0, 0.12, 0.345);
+    box(g, 0.2, 0.14, 0.02, '#6a4a32', 0, 0, 0.345);
+    return 0.5;
+  }
+  function bTemple(g) {
+    box(g, 0.92, 0.07, 0.82, '#d8d2c6');
+    box(g, 0.68, 0.28, 0.52, '#b8322a', 0, 0.07, 0);
+    box(g, 0.2, 0.2, 0.02, '#f0c34a', 0, 0.07, 0.27);
+    for (const x of [-0.26, -0.12, 0.12, 0.26]) cyl(g, 0.025, 0.025, 0.28, '#7f1f19', x, 0.07, 0.3, 8);
+    hip(g, 0.98, 0.78, 0.18, '#d23b2c', 0, 0.35, 0);
+    hip(g, 0.62, 0.48, 0.2, '#c4302a', 0, 0.48, 0);
+    box(g, 0.5, 0.04, 0.04, '#f0c34a', 0, 0.62, 0);
+    sph(g, 0.05, '#f0c34a', 0, 0.7, 0);
+    return 0.82;
+  }
+  function bTower(g) {
+    box(g, 0.7, 0.05, 0.7, '#e2ddd1');
+    cyl(g, 0.12, 0.2, 2.1, '#efe9dd', 0, 0.05, 0, 8);
+    for (let i = 0; i < 4; i++) cyl(g, 0.205 - i * 0.02, 0.205 - i * 0.02, 0.025, '#b9d6cf', 0, 0.35 + i * 0.45, 0, 8);
+    cyl(g, 0.22, 0.13, 0.14, '#9cc4bc', 0, 2.15, 0, 8);
+    cone(g, 0.05, 0.25, '#7aa59c', 0, 2.29, 0, 8);
+    tree(g, -0.3, 0.28, 0.8); tree(g, 0.3, 0.28, 0.7, '#4f9a5e'); tree(g, 0.3, -0.3, 0.75); tree(g, -0.28, -0.3, 0.65, '#7cbf6e');
+    return 2.6;
+  }
+  function bLantan(g) {
+    const water = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.08, 1.4), M('#5ec8ea', { roughness: 0.12, metalness: 0.15, transparent: true, opacity: 0.92 }));
+    water.position.y = 0.04; water.receiveShadow = true; g.add(water);
+    const isl = cyl(g, 0.22, 0.26, 0.1, '#9ccf7e', 0.25, 0, -0.1, 20);
+    tree(g, 0.25, -0.12, 0.7, '#4f9a5e');
+    // 九曲橋
+    box(g, 0.5, 0.03, 0.08, '#c94a3a', -0.12, 0.09, 0.15).rotation.y = 0.5;
+    // 涼亭
+    for (const [x, z] of [[-0.55, 0.38], [-0.4, 0.38], [-0.55, 0.53], [-0.4, 0.53]]) cyl(g, 0.012, 0.012, 0.16, '#7a2e22', x, 0.08, z, 6);
+    hip(g, 0.24, 0.24, 0.1, '#c4302a', -0.475, 0.24, 0.455);
+    const boat = box(g, 0.14, 0.04, 0.06, '#ffffff', -0.3, 0.08, -0.35);
+    g.userData.update = (t) => { boat.position.x = -0.3 + Math.sin(t * 0.4) * 0.3; boat.rotation.y = Math.cos(t * 0.4) > 0 ? 0 : Math.PI; };
+    return 0.4;
+  }
+  function bBaseball(g) {
+    cyl(g, 0.66, 0.66, 0.04, '#5bb55e', 0, 0, 0, 40);
+    const dia = box(g, 0.32, 0.045, 0.32, '#d9a46c', 0, 0, 0.1); dia.rotation.y = Math.PI / 4;
+    box(g, 0.05, 0.05, 0.05, '#ffffff', 0, 0, 0.32);
+    const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.68, 0.28, 40, 1, true), M('#eae6dd', { side: THREE.DoubleSide }));
+    stand.position.y = 0.14; g.add(stand);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.82, 0.03, 8, 48), M('#2f6f9e'));
+    rim.rotation.x = Math.PI / 2; rim.position.y = 0.28; g.add(rim);
+    for (let i = 0; i < 4; i++) {
+      const a = Math.PI / 4 + i * Math.PI / 2;
+      cyl(g, 0.015, 0.015, 0.55, '#888', Math.cos(a) * 0.85, 0, Math.sin(a) * 0.85, 6);
+      box(g, 0.12, 0.06, 0.03, '#fffbe0', Math.cos(a) * 0.85, 0.55, Math.sin(a) * 0.85, { emissive: '#fff4b0', emissiveIntensity: 0.6 }).lookAt(0, 0.6, 0);
+    }
+    return 0.75;
+  }
+  function bForestSong(g) {
+    cyl(g, 0.44, 0.46, 0.05, '#cbbfa8', 0, 0, 0, 32);
+    const egg = new THREE.Mesh(new THREE.SphereGeometry(0.34, 28, 20), M('#c8925a'));
+    egg.scale.set(1, 1.4, 1); egg.position.y = 0.5; g.add(egg);
+    const lattice = new THREE.Mesh(new THREE.SphereGeometry(0.352, 12, 9), new THREE.MeshBasicMaterial({ color: '#6e4524', wireframe: true }));
+    lattice.scale.set(1, 1.4, 1); lattice.position.y = 0.5; lattice.castShadow = false; g.add(lattice);
+    // 斜撐木柱
+    for (let i = 0; i < 6; i++) {
+      const a = i / 6 * Math.PI * 2;
+      const p = cyl(g, 0.018, 0.022, 0.5, '#8a5a34', Math.cos(a) * 0.36, 0, Math.sin(a) * 0.36, 6);
+      p.lookAt(0, 0.9, 0); p.rotateX(Math.PI / 2);
+    }
+    g.userData.update = (t) => { lattice.rotation.y = t * 0.15; };
+    return 1.0;
+  }
+  function bMuseum(g) {
+    box(g, 0.62, 0.36, 0.5, '#a8432f', -0.14, 0, 0);
+    for (let i = 0; i < 3; i++) box(g, 0.1, 0.16, 0.02, '#f3e9da', -0.34 + i * 0.2, 0.1, 0.255);
+    box(g, 0.66, 0.035, 0.54, '#7f2f22', -0.14, 0.36, 0);
+    box(g, 0.32, 0.46, 0.5, '#a9dbea', 0.3, 0, 0, { roughness: 0.1, metalness: 0.3, transparent: true, opacity: 0.8 });
+    box(g, 0.34, 0.03, 0.52, '#ffffff', 0.3, 0.46, 0);
+    return 0.62;
+  }
+  function bPrison(g) {
+    const H = 0.18, c = '#a3a3a0';
+    box(g, 0.9, H, 0.05, c, 0, 0, -0.43); box(g, 0.9, H, 0.05, c, 0, 0, 0.43);
+    box(g, 0.05, H, 0.9, c, -0.43, 0, 0); box(g, 0.05, H, 0.9, c, 0.43, 0, 0);
+    box(g, 0.16, 0.12, 0.06, '#5a5a5a', 0, 0, 0.44);
+    // 扇形三翼
+    for (const a of [-0.7, 0, 0.7]) {
+      const wing = new THREE.Group(); wing.rotation.y = a; wing.position.set(0, 0, 0.12); g.add(wing);
+      box(wing, 0.16, 0.18, 0.46, '#c9c4b8', 0, 0, -0.3);
+      gable(wing, 0.2, 0.48, 0.08, '#5e5e5e', 0, 0.18, -0.3, Math.PI / 2 * 0).rotation.y = 0;
+    }
+    cyl(g, 0.11, 0.11, 0.36, '#8c8a85', 0, 0, 0.12, 8);
+    cone(g, 0.14, 0.12, '#4e4e4e', 0, 0.36, 0.12, 8);
+    return 0.6;
+  }
+  function bCreative(g) {
+    box(g, 0.4, 0.26, 0.7, '#b5653f', -0.22, 0, 0);
+    gable(g, 0.46, 0.74, 0.16, '#6d4a3a', -0.22, 0.26, 0);
+    box(g, 0.38, 0.32, 0.5, '#c27a4a', 0.22, 0, -0.08);
+    gable(g, 0.44, 0.54, 0.16, '#5a4a40', 0.22, 0.32, -0.08);
+    for (let i = 0; i < 3; i++) box(g, 0.02, 0.1, 0.1, '#f3e9da', -0.425, 0.08, -0.22 + i * 0.22);
+    cyl(g, 0.05, 0.07, 1.05, '#8b4a33', 0.32, 0, 0.32, 12);
+    box(g, 0.09, 0.04, 0.09, '#fff', 0.32, 0.86, 0.32);
+    return 1.08;
+  }
+  function bKoji(g) {
+    box(g, 0.64, 0.3, 0.5, '#f3e3c3');
+    box(g, 0.16, 0.2, 0.02, '#2f8f83', 0, 0, 0.255);
+    hip(g, 0.78, 0.64, 0.22, '#2f8f83', 0, 0.3, 0);
+    const cols = ['#f2c230', '#3fae6a', '#3b7fd1', '#e5533d', '#a35cc7'];
+    for (let i = 0; i < 5; i++) sph(g, 0.045, cols[i], -0.2 + i * 0.1, 0.54 + Math.sin(i) * 0.02, 0, { roughness: 0.25, metalness: 0.2 });
+    cone(g, 0.04, 0.12, '#f2c230', -0.3, 0.3, 0.3, 8); cone(g, 0.04, 0.12, '#3fae6a', 0.3, 0.3, 0.3, 8);
+    return 0.72;
+  }
+  function bStation(g) {
+    box(g, 0.94, 0.28, 0.44, '#f4f1ea', 0, 0, -0.04);
+    for (let i = -3; i <= 3; i++) if (i !== 0) box(g, 0.08, 0.13, 0.02, '#7aa3b8', i * 0.12, 0.08, 0.185);
+    box(g, 0.98, 0.03, 0.48, '#6a6a6a', 0, 0.28, -0.04);
+    box(g, 0.3, 0.42, 0.46, '#efe9df', 0, 0, -0.02);
+    gable(g, 0.34, 0.5, 0.12, '#5a5a5a', 0, 0.42, -0.02);
+    const clock = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.02, 20), M('#ffffff', { emissive: '#ffffff', emissiveIntensity: 0.15 }));
+    clock.rotation.x = Math.PI / 2; clock.position.set(0, 0.32, 0.215); g.add(clock);
+    box(g, 0.01, 0.045, 0.006, '#333', 0, 0.32, 0.228);
+    box(g, 0.14, 0.18, 0.02, '#4a5d6a', 0, 0, 0.215);
+    return 0.75;
+  }
+  function bCityHall(g) {
+    box(g, 0.86, 0.32, 0.5, '#e8e2d4');
+    for (let r = 0; r < 2; r++) for (let i = -3; i <= 3; i++) if (i !== 0) box(g, 0.07, 0.07, 0.02, '#8fb3c7', i * 0.11, 0.07 + r * 0.13, 0.255);
+    box(g, 0.24, 0.82, 0.26, '#d8d0bc', 0, 0, 0.02);
+    box(g, 0.2, 0.08, 0.02, '#8fb3c7', 0, 0.6, 0.155);
+    hip(g, 0.3, 0.32, 0.16, '#6b6057', 0, 0.82, 0.02);
+    cyl(g, 0.008, 0.008, 0.28, '#666', 0.35, 0.32, 0.1, 6);
+    box(g, 0.1, 0.06, 0.005, '#e5533d', 0.4, 0.53, 0.1);
+    return 1.08;
+  }
+  function bHSR(g) {
+    for (const x of [-0.36, 0, 0.36]) box(g, 0.06, 0.3, 0.06, '#c9c4ba', x, 0, 0);
+    box(g, 1.0, 0.05, 0.22, '#d9d4ca', 0, 0.3, 0);
+    const train = new THREE.Group(); train.position.y = 0.35; g.add(train);
+    box(train, 0.62, 0.11, 0.13, '#ffffff', 0, 0, 0);
+    box(train, 0.62, 0.02, 0.135, '#ec7a2c', 0, 0.035, 0);
+    box(train, 0.5, 0.025, 0.135, '#4e6f8a', 0, 0.065, 0);
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.065, 16, 10), M('#ffffff'));
+    nose.scale.set(2, 0.85, 1); nose.position.set(0.31, 0.055, 0); train.add(nose);
+    // 指標牌
+    box(g, 0.02, 0.32, 0.02, '#666', -0.42, 0, 0.32);
+    box(g, 0.22, 0.09, 0.02, '#ec7a2c', -0.42, 0.3, 0.32);
+    g.userData.update = (t) => { train.position.x = Math.sin(t * 0.8) * 0.16; };
+    return 0.68;
+  }
+  function bIndustry(g) {
+    box(g, 0.56, 0.26, 0.42, '#aaa49c', -0.14, 0, -0.14);
+    for (let i = 0; i < 3; i++) gable(g, 0.19, 0.44, 0.12, '#6b6057', -0.33 + i * 0.19, 0.26, -0.14);
+    cyl(g, 0.12, 0.12, 0.3, '#dcdcdc', 0.26, 0, 0.18, 20);
+    cyl(g, 0.1, 0.1, 0.24, '#e8e8e8', -0.06, 0, 0.3, 20);
+    cyl(g, 0.045, 0.06, 0.8, '#6b6057', 0.3, 0, -0.3, 12);
+    const smoke = [];
+    for (let i = 0; i < 4; i++) {
+      const s = sph(g, 0.06, '#ffffff', 0.3, 0.85, -0.3, { transparent: true, opacity: 0.8 }); s.castShadow = false; smoke.push(s);
+    }
+    g.userData.update = (t) => {
+      smoke.forEach((s, i) => {
+        const p = (t * 0.25 + i / smoke.length) % 1;
+        s.position.set(0.3 + p * 0.2, 0.82 + p * 0.5, -0.3 - p * 0.05);
+        s.scale.setScalar(0.6 + p * 1.2); s.material.opacity = 0.85 * (1 - p);
+      });
+    };
+    return 1.0;
+  }
+
+  // ---------------- 建立地標與名牌 ----------------
+  const ringGeo = new THREE.TorusGeometry(0.62, 0.04, 10, 48);
+  const pickables = [];
+  LANDMARKS.forEach((l, i) => {
+    const holder = new THREE.Group();
+    holder.position.set(l.x, TILE_H, l.z);
+    island.add(holder);
+    const g = new THREE.Group();
+    holder.add(g);
+    l.top = l.build(g);
+    l.holder = holder; l.group = g; l.color = CATS[l.cat].color;
+    g.traverse(o => { if (o.isMesh) { o.userData.lm = i; pickables.push(o); } });
+
+    // 高亮光圈（預設隱藏）
+    const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: l.color, transparent: true, opacity: 0.9 }));
+    ring.rotation.x = Math.PI / 2; ring.position.y = 0.03; ring.visible = false;
+    const sz = l.reserve ? 1.45 : 1; ring.scale.set(sz, sz, sz);
+    holder.add(ring); l.ring = ring;
+
+    // 名牌
+    const el = document.createElement('div');
+    el.className = 'lm-label bg-white text-slate-800 rounded-lg border border-slate-200 shadow-sm px-2 py-[3px] text-[12px] font-semibold flex items-center gap-1.5';
+    el.style.setProperty('--c', l.color);
+    el.innerHTML = `<span class="inline-block w-2 h-2 rounded-full" style="background:${l.color}"></span>${l.name}`;
+    el.addEventListener('pointerdown', e => e.stopPropagation());
+    el.addEventListener('click', e => { e.stopPropagation(); select(selected === i ? -1 : i); });
+    labelsLayer.appendChild(el);
+    l.el = el;
+  });
+
+  // ================= 第 2 階段：阿里山林鐵 3D 軌道 =================
+  const railGroup = new THREE.Group(); island.add(railGroup);
+  // 封閉環線：經嘉義車站 → 森林之歌 → 車庫園區 → 北門驛 → 東側 → 南側沙岸 → 回到車站
+  const RAIL_PTS = [[-6.2, 3.8], [-4.0, 1.8], [-2.9, 1.0], [-3.4, -0.6], [-3.2, -3.0], [-1.0, -4.95], [0.5, -4.85],
+    [2.0, -4.7], [2.25, -3.45], [4.0, -3.2], [6.4, -3.0], [7.7, -0.5], [7.9, 2.5], [6.8, 5.2], [4.4, 7.0],
+    [1.5, 7.8], [-1.8, 7.6], [-4.6, 6.2]];
+  const railCurve = new THREE.CatmullRomCurve3(RAIL_PTS.map(([x, z]) => new THREE.Vector3(x, 0.26, z)), true, 'centripetal');
+  const railLen = railCurve.getLength();
+
+  // 清除軌道經過處的小房子與樹
+  for (let k = 0; k <= 700; k++) {
+    const p = railCurve.getPointAt(k / 700);
+    fillers.forEach(f => { if (f.g.parent && Math.hypot(f.x - p.x, f.z - p.z) < 0.62) f.g.parent.remove(f.g); });
+    sandDeco.forEach(f => { if (f.g.parent && Math.hypot(f.x - p.x, f.z - p.z) < 0.75) f.g.parent.remove(f.g); });
+  }
+
+  // 道碴路基 + 立體木枕木（InstancedMesh）
+  const nSl = Math.floor(railLen / 0.19);
+  const ballast = new THREE.InstancedMesh(new THREE.BoxGeometry(0.44, 0.24, 0.2), M('#c9bca6'), nSl);
+  const sleepers = new THREE.InstancedMesh(new THREE.BoxGeometry(0.38, 0.04, 0.075), M('#7a4f2e'), nSl);
+  const dummy = new THREE.Object3D();
+  for (let k = 0; k < nSl; k++) {
+    const u = k / nSl, p = railCurve.getPointAt(u), tg = railCurve.getTangentAt(u);
+    dummy.rotation.set(0, Math.atan2(tg.x, tg.z), 0);
+    dummy.position.set(p.x, 0.12, p.z); dummy.updateMatrix(); ballast.setMatrixAt(k, dummy.matrix);
+    dummy.position.set(p.x, 0.26, p.z); dummy.updateMatrix(); sleepers.setMatrixAt(k, dummy.matrix);
+  }
+  railGroup.add(ballast, sleepers);
+
+  // 兩條鋼軌
+  const UP = new THREE.Vector3(0, 1, 0);
+  [-0.11, 0.11].forEach(off => {
+    const pts = [];
+    for (let k = 0; k < 500; k++) {
+      const u = k / 500, p = railCurve.getPointAt(u), tg = railCurve.getTangentAt(u);
+      const n = new THREE.Vector3().crossVectors(UP, tg).normalize();
+      pts.push(new THREE.Vector3(p.x + n.x * off, 0.292, p.z + n.z * off));
+    }
+    const c = new THREE.CatmullRomCurve3(pts, true);
+    railGroup.add(new THREE.Mesh(new THREE.TubeGeometry(c, 900, 0.017, 6, true), M('#8d8f94', { metalness: 0.6, roughness: 0.35 })));
+  });
+
+  // 紅色小火車（火車頭 + 2 節檜木客車）
+  const trainCars = [];
+  function wheels(g, zs) {
+    zs.forEach(z => [-0.12, 0.12].forEach(x => {
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.03, 12), M('#222'));
+      w.rotation.z = Math.PI / 2; w.position.set(x, 0.035, z); g.add(w);
+    }));
+  }
+  const loco = new THREE.Group();
+  box(loco, 0.24, 0.05, 0.5, '#2b2b2b', 0, 0.04, 0);
+  const boiler = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.3, 16), M('#c83e2b'));
+  boiler.rotation.x = Math.PI / 2; boiler.position.set(0, 0.18, 0.08); loco.add(boiler);
+  box(loco, 0.04, 0.04, 0.02, '#f0c34a', 0, 0.17, 0.235);
+  box(loco, 0.25, 0.22, 0.17, '#c83e2b', 0, 0.09, -0.15);
+  box(loco, 0.255, 0.07, 0.12, '#fbe9c8', 0, 0.2, -0.14);
+  box(loco, 0.29, 0.03, 0.21, '#2b2b2b', 0, 0.31, -0.15);
+  cyl(loco, 0.035, 0.028, 0.11, '#2b2b2b', 0, 0.26, 0.17, 10);
+  const lamp = sph(loco, 0.028, '#fff3b0', 0, 0.2, 0.24, { emissive: '#ffe680', emissiveIntensity: 0.5 });
+  wheels(loco, [-0.15, 0.02, 0.16]);
+  const puffs = [];
+  for (let i = 0; i < 5; i++) { const s = sph(loco, 0.05, '#ffffff', 0, 0.4, 0.17, { transparent: true, opacity: 0.8 }); puffs.push(s); }
+  railGroup.add(loco); trainCars.push(loco);
+  for (let c = 0; c < 2; c++) {
+    const car = new THREE.Group();
+    box(car, 0.24, 0.05, 0.44, '#2b2b2b', 0, 0.04, 0);
+    box(car, 0.24, 0.17, 0.42, '#c83e2b', 0, 0.09, 0);
+    box(car, 0.245, 0.03, 0.425, '#f3e3c3', 0, 0.2, 0);
+    for (let k = -1; k <= 1; k++) for (const sx of [-0.123, 0.123]) box(car, 0.005, 0.05, 0.08, '#fbe9c8', sx, 0.13, k * 0.13);
+    box(car, 0.27, 0.03, 0.45, '#5a3b2a', 0, 0.23, 0);
+    wheels(car, [-0.13, 0.13]);
+    railGroup.add(car); trainCars.push(car);
+  }
+  let trainU = 0;
+  const CAR_GAP = 0.56 / railLen;
+  function updateTrain(t, dt) {
+    trainU = (trainU + dt * 0.85 / railLen) % 1;
+    trainCars.forEach((c, k) => {
+      const u = ((trainU - k * CAR_GAP) % 1 + 1) % 1;
+      const p = railCurve.getPointAt(u), tg = railCurve.getTangentAt(u);
+      c.position.set(p.x, 0.3, p.z);
+      c.rotation.y = Math.atan2(tg.x, tg.z);
+    });
+    puffs.forEach((s, i) => {
+      const q = (t * 0.9 + i / puffs.length) % 1;
+      s.position.set(0, 0.36 + q * 0.45, 0.17 - q * 0.45);
+      s.scale.setScalar(0.5 + q * 1.4); s.material.opacity = 0.8 * (1 - q);
+    });
+  }
+
+  // ================= 地標之間的紅色虛線連結線 =================
+  const LINKS = [
+    ['北門驛', '玉山旅社'], ['北門驛', '阿里山林業鐵路車庫園區'], ['北門驛', '檜意森活村'], ['北門驛', '文化路夜市'], ['北門驛', '森林之歌'],
+    ['玉山旅社', '檜意森活村'], ['阿里山林業鐵路車庫園區', '嘉義製材所'], ['嘉義製材所', '森林之歌'],
+    ['檜意森活村', '嘉義公園・射日塔'], ['嘉義公園・射日塔', '嘉義市立棒球場'], ['嘉義公園・射日塔', '蘭潭'],
+    ['文化路夜市', '中央噴水池'], ['文化路夜市', '嘉義城隍廟'], ['中央噴水池', '東市場'], ['中央噴水池', '嘉義城隍廟'],
+    ['中央噴水池', '嘉義市政府'], ['中央噴水池', '嘉義市立美術館'], ['嘉義城隍廟', '嘉義舊監獄'], ['嘉義舊監獄', '森林之歌'],
+    ['嘉義車站', '嘉義舊監獄'], ['嘉義車站', '嘉義市立美術館'], ['嘉義車站', '嘉義文化創意產業園區'], ['嘉義市立美術館', '嘉義文化創意產業園區'],
+    ['東市場', '交趾陶館'], ['交趾陶館', '嘉義市政府'], ['交趾陶館', '北港路・後湖工業區'], ['北港路・後湖工業區', '蘭潭'],
+    ['嘉義市政府', '往高鐵嘉義站'], ['往高鐵嘉義站', '北港路・後湖工業區'],
+  ];
+  const linkGroup = new THREE.Group(); island.add(linkGroup);
+  const linkLines = [];
+  const idxOf = n => LANDMARKS.findIndex(l => l.name === n);
+  LANDMARKS.forEach(l => { l.links = []; });
+  LINKS.forEach(([a, b]) => {
+    const i = idxOf(a), j = idxOf(b); if (i < 0 || j < 0) return;
+    LANDMARKS[i].links.push(j); LANDMARKS[j].links.push(i);
+    const A = new THREE.Vector3(LANDMARKS[i].x, TILE_H + 0.45, LANDMARKS[i].z);
+    const B = new THREE.Vector3(LANDMARKS[j].x, TILE_H + 0.45, LANDMARKS[j].z);
+    const mid = A.clone().add(B).multiplyScalar(0.5); mid.y += 0.7 + A.distanceTo(B) * 0.2;
+    const geo = new THREE.BufferGeometry().setFromPoints(new THREE.QuadraticBezierCurve3(A, mid, B).getPoints(56));
+    const mat = new THREE.LineDashedMaterial({ color: '#c0503a', dashSize: 0.16, gapSize: 0.11, transparent: true, opacity: 0.75 });
+    const line = new THREE.Line(geo, mat);
+    line.computeLineDistances();
+    linkGroup.add(line);
+    linkLines.push({ line, mat, i, j, base: geo.attributes.lineDistance.array.slice() });
+  });
+  function styleLinks() {
+    linkLines.forEach(L => {
+      L.line.visible = !LANDMARKS[L.i].hidden && !LANDMARKS[L.j].hidden;
+      const hot = selected >= 0 && (L.i === selected || L.j === selected);
+      if (selected < 0) { L.mat.color.set('#c0503a'); L.mat.opacity = 0.75; }
+      else if (hot) { L.mat.color.set('#e2361f'); L.mat.opacity = 1; }
+      else { L.mat.color.set('#c0503a'); L.mat.opacity = 0.12; }
+      L.hot = hot;
+      L.line.renderOrder = hot ? 2 : 1;
+    });
+  }
+  let dashOff = 0;
+  function updateLinks(dt) {   // 虛線流動
+    dashOff -= dt * 0.35;
+    linkLines.forEach(L => {
+      const arr = L.line.geometry.attributes.lineDistance.array;
+      const sp = L.hot ? 2.2 : 1;
+      for (let k = 0; k < arr.length; k++) arr[k] = L.base[k] + dashOff * sp;
+      L.line.geometry.attributes.lineDistance.needsUpdate = true;
+    });
+  }
+
+  // 陰影設定
+  island.traverse(o => { if (o.isMesh) { if (o.castShadow !== false && !(o.material && o.material.wireframe)) o.castShadow = true; o.receiveShadow = true; } });
+  base.castShadow = false; base2.castShadow = false; base3.castShadow = false;
+
+  // 雲朵
+  const clouds = [];
+  const cloudMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, transparent: true, opacity: 0.92 });
+  for (let i = 0; i < 7; i++) {
+    const c = new THREE.Group();
+    const n = 3 + Math.floor(rand() * 3);
+    for (let k = 0; k < n; k++) {
+      const s = new THREE.Mesh(new THREE.SphereGeometry(0.7 + rand() * 0.6, 16, 12), cloudMat);
+      s.position.set(k * 0.9 - n * 0.45, rand() * 0.3, (rand() - 0.5) * 0.6); s.scale.y = 0.65; c.add(s);
+    }
+    const a = rand() * Math.PI * 2, r = 15 + rand() * 10;
+    c.position.set(Math.cos(a) * r, 2 + rand() * 6, Math.sin(a) * r);
+    c.userData = { a, r, sp: 0.01 + rand() * 0.015 };
+    scene.add(c); clouds.push(c);
+  }
+
+
+  // ---------------- 選取 / 高亮 ----------------
+  let selected = -1;
+  const info = document.getElementById('info');
+  function setEmissive(l, k) {
+    const c = new THREE.Color(k > 0.25 ? l.color : '#e2361f');
+    l.group.traverse(o => {
+      if (!o.isMesh || !o.material || !o.material.emissive) return;
+      if (o.userData.baseEm === undefined) { o.userData.baseEm = o.material.emissive.clone(); o.userData.baseEi = o.material.emissiveIntensity; }
+      if (k > 0) { o.material.emissive.copy(c); o.material.emissiveIntensity = k; }
+      else { o.material.emissive.copy(o.userData.baseEm); o.material.emissiveIntensity = o.userData.baseEi; }
+    });
+  }
+  function select(i) {
+    LANDMARKS.forEach(l => { if (l.hl) setEmissive(l, 0); l.hl = false; l.linkedOn = false; l.el.classList.remove('active', 'linked', 'dim'); });
+    selected = i;
+    styleLinks();
+    if (i < 0) { info.classList.add('opacity-0', 'translate-y-4'); info.classList.remove('pointer-events-auto'); return; }
+    const l = LANDMARKS[i];
+    setEmissive(l, 0.32); l.hl = true; l.el.classList.add('active');
+    LANDMARKS.forEach((o, k) => {
+      if (k === i) return;
+      if (l.links.includes(k)) { setEmissive(o, 0.16); o.hl = true; o.linkedOn = true; o.el.classList.add('linked'); }
+      else o.el.classList.add('dim');
+    });
+    document.getElementById('info-links').textContent = l.links.length ? '☍ 相連：' + l.links.map(k => LANDMARKS[k].name).join('、') : '';
+    l.pop = 0;
+    document.getElementById('info-dot').style.background = l.color;
+    const cat = document.getElementById('info-cat'); cat.textContent = CATS[l.cat].name; cat.style.color = l.color;
+    document.getElementById('info-name').textContent = l.name;
+    document.getElementById('info-desc').textContent = l.desc;
+    info.classList.remove('opacity-0', 'translate-y-4'); info.classList.add('pointer-events-auto');
+  }
+  document.getElementById('info-close').addEventListener('click', () => select(-1));
+
+  // ---------------- 滑鼠互動：拖曳旋轉、滾輪縮放、點擊 ----------------
+  let yaw = -0.35, yawT = yaw, pitch = 0.78, pitchT = pitch, dist = 27, distT = dist;
+  let down = false, moved = 0, lx = 0, ly = 0;
+  const pointers = new Map(); let pinchD = 0;
+  const raycaster = new THREE.Raycaster(), mouse = new THREE.Vector2();
+
+  stage.addEventListener('pointerdown', e => {
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    stage.setPointerCapture(e.pointerId);
+    down = true; moved = 0; lx = e.clientX; ly = e.clientY; stage.classList.add('dragging');
+    if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinchD = Math.hypot(a.x - b.x, a.y - b.y); }
+  });
+  stage.addEventListener('pointermove', e => {
+    if (!pointers.has(e.pointerId)) { hover(e); return; }
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (pinchD) distT = THREE.MathUtils.clamp(distT * pinchD / d, 12, 45); pinchD = d; moved += 10; return;
+    }
+    const dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
+    moved += Math.abs(dx) + Math.abs(dy);
+    yawT += dx * 0.008;
+    pitchT = THREE.MathUtils.clamp(pitchT + dy * 0.005, 0.25, 1.5);
+  });
+  const end = e => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinchD = 0;
+    if (pointers.size > 0) return;
+    stage.classList.remove('dragging');
+    if (down && moved < 6 && e.type === 'pointerup') pick(e);
+    down = false;
+  };
+  stage.addEventListener('pointerup', end);
+  stage.addEventListener('pointercancel', end);
+  stage.addEventListener('wheel', e => {
+    e.preventDefault();
+    distT = THREE.MathUtils.clamp(distT * (1 + Math.sign(e.deltaY) * 0.09), 12, 45);
+  }, { passive: false });
+
+  function rayAt(e) {
+    mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+    raycaster.setFromCamera(mouse, camera);
+    const hit = raycaster.intersectObjects(pickables, false).find(h => !LANDMARKS[h.object.userData.lm].hidden);
+    return hit ? hit.object.userData.lm : -1;
+  }
+  function pick(e) {
+    if (polMode) {
+      mouse.set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+      raycaster.setFromCamera(mouse, camera);
+      const h = raycaster.intersectObjects(diamonds.filter(d => d.g.visible).map(d => d.gem), false)[0];
+      if (h) { showPolicy(h.object.userData.pol); return; }
+    }
+    activePol = null; markPolicyItem();
+    const i = rayAt(e); select(i === selected ? -1 : i);
+  }
+  let hoverI = -1;
+  function hover(e) {
+    const i = rayAt(e);
+    if (i !== hoverI) { hoverI = i; stage.style.cursor = i >= 0 ? 'pointer' : ''; }
+  }
+
+  // ---------------- 名牌投影 ----------------
+  const tmp = new THREE.Vector3();
+  function updateLabels() {
+    const w = window.innerWidth, h = window.innerHeight;
+    LANDMARKS.forEach((l, i) => {
+      l.group.getWorldPosition(tmp);
+      tmp.y += (l.top + 0.18) * l.group.scale.y;
+      const worldPos = tmp;
+      worldPos.project(camera);
+      const x = (worldPos.x * 0.5 + 0.5) * w, y = (-worldPos.y * 0.5 + 0.5) * h;
+      const visible = worldPos.z < 1 && x > -100 && x < w + 100 && y > -60 && y < h + 60;
+      l.el.style.display = visible && !l.hidden ? '' : 'none';
+      if (!visible) return;
+      const s = i === selected ? 1.12 : THREE.MathUtils.clamp(24 / dist, 0.72, 1.1);
+      l.el.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%) translateY(-6px) scale(${s})`;
+      l.el.style.zIndex = i === selected ? 99999 : String(Math.round((1 - worldPos.z) * 50000));
+    });
+  }
+
+  // ---------------- 動畫迴圈 ----------------
+  const clock = new THREE.Clock();
+  function animate() {
+    requestAnimationFrame(animate);
+    const t = clock.getElapsedTime();
+    const dt = Math.min(0.05, t - lastT); lastT = t;
+    if (state.spin && !down) yawT += dt * 0.12;
+    if (state.rail) updateTrain(t, dt);
+    if (state.links) updateLinks(dt);
+    updateDiamonds(t);
+    if (playing) {
+      minutes += dt * 20;                 // 每秒前進 20 分鐘
+      if (minutes > 1380) minutes = 360;
+      setTime(minutes);
+    }
+    yaw += (yawT - yaw) * 0.12; pitch += (pitchT - pitch) * 0.12; dist += (distT - dist) * 0.12;
+    island.rotation.y = yaw;
+    camera.position.set(0, Math.sin(pitch) * dist, Math.cos(pitch) * dist);
+    camera.lookAt(0, 0.4, 0);
+
+    island.position.y = Math.sin(t * 0.6) * 0.08;   // 微微漂浮
+
+    LANDMARKS.forEach((l, i) => {
+      if (l.group.userData.update) l.group.userData.update(t);
+      if (i === selected) {
+        l.pop = Math.min(1, (l.pop || 0) + 0.06);
+        const bounce = Math.abs(Math.sin(t * 3)) * 0.12;
+        l.group.position.y = bounce;
+        const s = 1 + 0.18 * l.pop;
+        l.group.scale.set(s, s, s);
+        l.ring.material.opacity = 0.55 + Math.sin(t * 4) * 0.35;
+        const rs = (l.reserve ? 1.45 : 1) * (1 + Math.sin(t * 4) * 0.05);
+        l.ring.scale.set(rs, rs, rs);
+      } else {
+        l.group.position.y *= 0.85;
+        const s = l.group.scale.x + (1 - l.group.scale.x) * 0.15;
+        l.group.scale.set(s, s, s);
+        if (l.linkedOn) {
+          l.ring.material.opacity = 0.35 + Math.sin(t * 4 + 1.5) * 0.15;
+          const rs = l.reserve ? 1.2 : 0.8; l.ring.scale.set(rs, rs, rs);
+        }
+      }
+      l.ring.visible = i === selected || !!l.linkedOn;
+    });
+
+    clouds.forEach(c => {
+      c.userData.a += c.userData.sp * 0.02;
+      c.position.x = Math.cos(c.userData.a) * c.userData.r;
+      c.position.z = Math.sin(c.userData.a) * c.userData.r;
+    });
+
+    renderer.render(scene, camera);
+    updateLabels();
+  }
+  // ================= 第 3 階段：四角卡片 =================
+  const fmt = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(Math.floor(m % 60)).padStart(2, '0');
+
+  // ---- 收合按鈕 ----
+  function collapsible(btnId, bodyId) {
+    const btn = document.getElementById(btnId), body = document.getElementById(bodyId);
+    const set = closed => { body.classList.toggle('hidden', closed); btn.classList.toggle('closed', closed); btn.setAttribute('aria-label', closed ? '展開' : '收合'); };
+    btn.addEventListener('click', () => { set(!body.classList.contains('hidden')); placeInfo(); });
+    return set;
+  }
+  const setMainClosed = collapsible('main-collapse', 'main-body');
+  const setLogClosed = collapsible('log-collapse', 'log-body');
+  if (window.innerWidth < 640) { setMainClosed(true); setLogClosed(true); }
+
+  // ---- 左上：分類篩選膠囊 ----
+  const catOn = { rail: true, old: true, park: true, art: true, city: true };
+  const catPills = {};
+  const filterBox = document.getElementById('cat-filters');
+  Object.entries(CATS).forEach(([k, c]) => {
+    const n = LANDMARKS.filter(l => l.cat === k).length;
+    const b = document.createElement('button');
+    b.className = 'cat-pill on'; b.style.setProperty('--c', c.color);
+    b.innerHTML = `<span class="dot"></span>${c.name}<span class="cnt">${n}</span>`;
+    b.addEventListener('click', () => { catOn[k] = !catOn[k]; applyFilter(); });
+    filterBox.appendChild(b); catPills[k] = b;
+  });
+  function applyFilter() {
+    Object.keys(catOn).forEach(k => catPills[k].classList.toggle('on', catOn[k]));
+    LANDMARKS.forEach(l => { l.hidden = !catOn[l.cat]; l.holder.visible = !l.hidden; });
+    if (selected >= 0 && LANDMARKS[selected].hidden) { activePol = null; select(-1); }
+    styleLinks(); refreshDiamonds();
+  }
+
+  // ---- 右上：嘉義市長候選人（依號次；政見摘要整理自公開新聞報導） ----
+  const SRC = {
+    yam: { label: '蕃新聞／報新聞〈嘉義市長政見對照〉2026-11-03', url: 'https://n.yam.com/Article/20261103422133' },
+    gvm: { label: '遠見雜誌〈2026嘉義市長選舉現首例「藍白合」〉2026-04-07', url: 'https://city.gvm.com.tw/article/129222' },
+  };
+  const CANDIDATES = [
+    { no: 1, name: '王義成', party: '無黨籍', color: '#a39a8c', policies: [] },
+    { no: 2, name: '陳愷璜', party: '無黨籍', color: '#e39a2d', policies: [
+      { lm: '嘉義市政府', src: 'yam', text: '打造台灣第一個「數位孿生城市」，串聯都市規劃、交通、公共服務與文資保存；主張善用 65 歲以上長者的人才與生產力。' },
+      { lm: '嘉義文化創意產業園區', src: 'yam', text: '發展美學產業與知識經濟，創造就業、吸引青年返鄉。' },
+    ] },
+    { no: 3, name: '張啓楷', party: '台灣民眾黨（國民黨、民眾黨共同推薦）', color: '#8e5bd0', policies: [
+      { lm: '嘉義市政府', src: 'yam', text: '生育獎勵第 1 胎 5 萬、第 2 胎 10 萬、第 3 胎 20 萬元；0–6 歲每年生日禮金 2 萬元；65 歲以上長者健保費由市府負擔。' },
+      { lm: '往高鐵嘉義站', src: 'yam', text: '爭取輕軌由太保高鐵嘉義站延伸至嘉義車站，請中央核定並全額負擔。' },
+      { lm: '北港路・後湖工業區', src: 'gvm', text: '開發北港路廊帶為產業走廊，可設產業園區承接後湖工業區部分廠商，結合長照、醫材與健康照護產業。' },
+      { lm: '蘭潭', src: 'gvm', text: '反對在蘭潭水庫設置約 8,000 片浮動式太陽能板，並呼籲進行微塑膠檢測。' },
+      { lm: '中央噴水池', src: 'gvm', text: '「2+4 商圈」：活化既有兩大核心商圈，並新增四個新興商圈。' },
+    ] },
+    { no: 4, name: '王美惠', party: '民主進步黨', color: '#d8578f', policies: [
+      { lm: '嘉義市政府', src: 'yam', text: '建構全齡照顧體系；視市府財政逐步擴大長者健保費與假牙補助；長者居家安全（防滑、扶手）補助擴及有需求者；爭取部立嘉義醫院長照大樓。' },
+      { lm: '嘉義車站', src: 'yam', text: '鐵路高架化市府負擔約 38 億元，將爭取中央分擔或等值補償。' },
+      { lm: '往高鐵嘉義站', src: 'yam', text: '高鐵輕軌應經專業評估，優先改善高鐵嘉義站與市區的連結，並與嘉義縣研議替代方案（如沙崙支線模式）。' },
+      { lm: '嘉義市立棒球場', src: 'yam', text: '增加營養午餐經費、興建兒童圖書館與社區運動設施，支持青年出國比賽與交流。' },
+    ] },
+    { no: 5, name: '黃宏成台灣阿成世界偉人財神總統', party: '無黨籍', color: '#a39a8c', policies: [] },
+  ];
+
+  // 3D 旋轉菱形
+  const polGroup = new THREE.Group(); polGroup.visible = false; island.add(polGroup);
+  const diamonds = [];
+  const perLm = {};
+  CANDIDATES.forEach(c => { c.on = true; c.policies.forEach(p => { p.i = idxOf(p.lm); (perLm[p.i] = perLm[p.i] || []).push({ c, p }); }); });
+  Object.keys(perLm).forEach(key => {
+    const arr = perLm[key], l = LANDMARKS[key];
+    arr.forEach((o, k) => {
+      const g = new THREE.Group();
+      g.position.set(l.x + (k - (arr.length - 1) / 2) * 0.6, TILE_H + l.top + 1.15, l.z);
+      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.24),
+        M(o.c.color, { flatShading: true, roughness: 0.3, metalness: 0.15, emissive: o.c.color, emissiveIntensity: 0.25 }));
+      gem.scale.y = 1.35; gem.castShadow = true; gem.userData.pol = o; g.add(gem);
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.6, 4), new THREE.MeshBasicMaterial({ color: o.c.color, transparent: true, opacity: 0.5 }));
+      stem.position.y = -0.52; g.add(stem);
+      polGroup.add(g);
+      diamonds.push({ g, gem, o, base: g.position.y, phase: diamonds.length * 1.3 });
+    });
+  });
+  function refreshDiamonds() { diamonds.forEach(d => { d.g.visible = d.o.c.on && !LANDMARKS[d.o.p.i].hidden; }); }
+  let activePol = null;
+  function updateDiamonds(t) {
+    if (!polGroup.visible) return;
+    diamonds.forEach(d => {
+      d.gem.rotation.y = t * 1.6 + d.phase;
+      d.g.position.y = d.base + Math.sin(t * 2 + d.phase) * 0.08;
+      const on = activePol === d.o && selected >= 0;
+      const s = d.g.scale.x + ((on ? 1.45 : 1) - d.g.scale.x) * 0.15;
+      d.g.scale.set(s, s, s);
+      d.gem.material.emissiveIntensity = on ? 0.6 + Math.sin(t * 5) * 0.2 : 0.25;
+    });
+  }
+
+  // 候選人面板
+  const candList = document.getElementById('cand-list');
+  CANDIDATES.forEach(c => {
+    const row = document.createElement('div'); row.className = 'cand-row';
+    const has = c.policies.length > 0;
+    row.innerHTML = `
+      <div class="flex items-start gap-2.5">
+        <span class="gem" style="--c:${c.color}"></span>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-baseline gap-1.5 flex-wrap"><span class="text-[11px] font-bold text-[#8a7f6e]">${c.no} 號</span><span class="font-bold text-[14px] text-[#3d3630] break-all">${c.name}</span></div>
+          <div class="text-[11px] text-[#8a7f6e]">${c.party}</div>
+        </div>
+        ${has ? '<button class="cand-toggle on">顯示</button>' : ''}
+      </div>
+      ${has ? `<ul class="cand-pols">${c.policies.map((p, k) => `<li data-k="${k}"><b style="color:${c.color}">◆ ${p.lm}</b>　${p.text}</li>`).join('')}</ul>`
+            : '<div class="text-[11px] text-[#a39a8c] mt-1 pl-[22px]">所引報導中未見具體政見整理</div>'}`;
+    if (has) {
+      const tg = row.querySelector('.cand-toggle');
+      tg.addEventListener('click', () => {
+        c.on = !c.on; tg.classList.toggle('on', c.on); tg.textContent = c.on ? '顯示' : '隱藏';
+        refreshDiamonds();
+        if (!c.on && activePol && activePol.c === c) { activePol = null; markPolicyItem(); select(-1); }
+      });
+      row.querySelectorAll('.cand-pols li').forEach(li => li.addEventListener('click', () => {
+        const p = c.policies[+li.dataset.k];
+        if (!c.on) tg.click();
+        showPolicy(perLm[p.i].find(o => o.p === p));
+      }));
+    }
+    c.row = row;
+    candList.appendChild(row);
+  });
+  function markPolicyItem() {
+    document.querySelectorAll('.cand-pols li').forEach(li => li.classList.remove('active'));
+    if (!activePol) return;
+    const k = activePol.c.policies.indexOf(activePol.p);
+    const li = activePol.c.row.querySelector(`li[data-k="${k}"]`); if (li) li.classList.add('active');
+  }
+  function showPolicy(o) {
+    const { c, p } = o, l = LANDMARKS[p.i];
+    if (l.hidden) { catOn[l.cat] = true; applyFilter(); }
+    select(p.i);
+    activePol = o; markPolicyItem();
+    document.getElementById('info-dot').style.background = c.color;
+    const cat = document.getElementById('info-cat'); cat.textContent = `${c.no} 號 ${c.name}｜${c.party}`; cat.style.color = c.color;
+    document.getElementById('info-name').textContent = '◆ ' + p.lm;
+    document.getElementById('info-desc').textContent = p.text;
+    document.getElementById('info-links').innerHTML =
+      `<span class="text-[#8a7f6e]">出處：</span><a class="underline" target="_blank" rel="noopener" href="${SRC[p.src].url}">${SRC[p.src].label}</a><span class="text-[#8a7f6e]">（以候選人官方公布為準）</span>`;
+  }
+
+  // 全景｜政見 切換
+  let polMode = false;
+  document.querySelectorAll('.mode-btn').forEach(b => b.addEventListener('click', () => {
+    polMode = b.dataset.m === 'pol';
+    document.querySelectorAll('.mode-btn').forEach(x => x.classList.toggle('on', x === b));
+    polGroup.visible = polMode;
+    document.getElementById('pol-panel').classList.toggle('hidden', !polMode);
+    if (!polMode && activePol) { activePol = null; markPolicyItem(); select(-1); }
+  }));
+
+  // ---- 左下：城市日誌（依時段生成的情境示意） ----
+  const LOG_POOL = [
+    ['北門驛', 360, 660, '林鐵列車從北門驛出發，往山的方向。'],
+    ['北門驛', 1020, 1140, '傍晚的列車回到北門驛，月台上飄著檜木香。'],
+    ['檜意森活村', 510, 1020, '檜木官舍的緣側坐滿了拍照的旅人。'],
+    ['檜意森活村', 840, 1050, '午後的日式庭園裡，有人穿著浴衣慢慢散步。'],
+    ['東市場', 360, 660, '早市攤商正在吆喝，牛雜湯的香氣飄出巷口。'],
+    ['東市場', 660, 810, '市場老店端出一碗碗熱騰騰的米糕。'],
+    ['中央噴水池', 420, 1080, '噴水池圓環的車流慢慢多了起來。'],
+    ['中央噴水池', 1080, 1380, '噴水池的燈亮了，圓環像一盞小小的燈籠。'],
+    ['嘉義公園・射日塔', 360, 540, '晨運的長輩在嘉義公園裡打太極。'],
+    ['嘉義公園・射日塔', 1050, 1260, '射日塔亮起燈，塔頂看得見整座城市的燈火。'],
+    ['蘭潭', 360, 510, '蘭潭水面起了一層薄霧，跑者沿著環潭步道前進。'],
+    ['蘭潭', 990, 1110, '夕陽把蘭潭染成金色，「蘭潭泛月」的時刻快到了。'],
+    ['蘭潭', 1140, 1380, '月亮升起，蘭潭水面映著一彎月光。'],
+    ['嘉義城隍廟', 360, 720, '城隍廟前的香爐升起第一縷煙。'],
+    ['嘉義城隍廟', 1080, 1320, '廟埕旁的小吃攤還亮著燈。'],
+    ['嘉義車站', 360, 570, '通勤人潮從嘉義車站湧出，機車在站前排成一列。'],
+    ['嘉義車站', 1020, 1200, '下班人潮回到嘉義車站，月台上滿是背包。'],
+    ['往高鐵嘉義站', 360, 600, '往高鐵站的接駁車一班接著一班。'],
+    ['往高鐵嘉義站', 1200, 1380, '夜班高鐵旅客搭接駁車回到市區。'],
+    ['嘉義製材所', 540, 1020, '製材所的老機具旁，導覽員正說著木都的故事。'],
+    ['阿里山林業鐵路車庫園區', 540, 1020, '車庫園區裡，蒸汽火車頭在陽光下閃著黑亮的光。'],
+    ['玉山旅社', 480, 1080, '玉山旅社二樓的木窗打開，咖啡香飄到北門街頭。'],
+    ['嘉義市立美術館', 540, 1020, '美術館紅磚牆前，校外教學的學生排隊入場。'],
+    ['嘉義舊監獄', 540, 990, '舊監獄的扇形舍房裡，導覽團安靜地聽著。'],
+    ['交趾陶館', 540, 1020, '交趾陶館裡，色彩鮮豔的陶偶吸引孩子們湊近看。'],
+    ['森林之歌', 420, 1080, '森林之歌的木構造在風裡投下交錯的影子。'],
+    ['嘉義市政府', 480, 1050, '市政府前的公告欄換上了新的活動海報。'],
+    ['嘉義文化創意產業園區', 600, 1050, '文創園區的老倉庫裡正在布展。'],
+    ['嘉義文化創意產業園區', 1080, 1260, '文創園區草地上的小型音樂會開始了。'],
+    ['北港路・後湖工業區', 420, 1080, '後湖工業區的貨車沿著北港路陸續出發。'],
+    ['嘉義市立棒球場', 840, 1080, '棒球場傳來清脆的擊球聲。'],
+    ['嘉義市立棒球場', 1080, 1320, '球場燈光亮起，看台上的加油聲此起彼落。'],
+    ['文化路夜市', 660, 840, '文化路上的雞肉飯店家排起午餐人龍。'],
+    ['文化路夜市', 1050, 1170, '文化路夜市的攤位燈一盞盞亮起。'],
+    ['文化路夜市', 1140, 1380, '夜市人潮正多，小吃攤前都在排隊。'],
+  ];
+  let ls = 1128;
+  const lr = () => { ls = (ls * 48271) % 2147483647; return ls / 2147483647; };
+  const TIMELINE = [], recent = [];
+  for (let m = 362; m <= 1380; m += 4 + Math.floor(lr() * 6)) {
+    const pool = LOG_POOL.filter(e => m >= e[1] && m <= e[2] && !recent.includes(e));
+    if (!pool.length) continue;
+    const e = pool[Math.floor(lr() * pool.length)];
+    recent.push(e); if (recent.length > 6) recent.shift();
+    TIMELINE.push({ m, name: e[0], text: e[3], i: idxOf(e[0]) });
+  }
+  const logList = document.getElementById('log-list');
+  let logCount = -1;
+  function renderLog(m) {
+    let n = 0; while (n < TIMELINE.length && TIMELINE[n].m <= m) n++;
+    if (n === logCount) return;
+    const grew = logCount >= 0 && n > logCount;
+    logCount = n;
+    const items = TIMELINE.slice(Math.max(0, n - 40), n).reverse();
+    logList.innerHTML = items.length ? items.map((e, k) => {
+      const l = LANDMARKS[e.i];
+      return `<li class="log-item${grew && k === 0 ? ' fresh' : ''}" data-i="${e.i}"><span class="log-time">${fmt(e.m)}</span><span><b style="color:${l.color}">${e.name}</b>：${e.text}</span></li>`;
+    }).join('') : '<li class="text-[12px] text-[#a39a8c] py-2">清晨六點，城市正在醒來……</li>';
+    if (grew) logList.scrollTop = 0;
+  }
+  logList.addEventListener('click', e => {
+    const li = e.target.closest('.log-item'); if (!li) return;
+    const i = +li.dataset.i; if (LANDMARKS[i].hidden) return;
+    activePol = null; markPolicyItem(); select(i);
+  });
+
+  // ================= 底部 Dock：開關 =================
+  const state = { labels: true, links: true, rail: true, spin: false, bird: false };
+  let lastT = 0;
+  document.querySelectorAll('.dock-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const k = btn.dataset.k;
+      state[k] = !state[k];
+      btn.classList.toggle('on', state[k]);
+      if (k === 'labels') labelsLayer.style.display = state.labels ? '' : 'none';
+      if (k === 'links') linkGroup.visible = state.links;
+      if (k === 'rail') railGroup.visible = state.rail;
+      if (k === 'bird') { pitchT = state.bird ? 1.5 : 0.78; if (state.bird) distT = Math.max(distT, 29); }
+    });
+  });
+
+  // ================= 時間滑桿：日夜天空 =================
+  const SKY_KEYS = [
+    { t: 360,  sky: '#ffd2b8', sunC: '#ffb27a', sun: 0.4,  hemi: 0.38, amb: 0.1 },
+    { t: 480,  sky: '#bceeff', sunC: '#fff1d6', sun: 0.72, hemi: 0.5,  amb: 0.12 },
+    { t: 960,  sky: '#bceeff', sunC: '#fff1d6', sun: 0.72, hemi: 0.5,  amb: 0.12 },
+    { t: 1080, sky: '#ffbf98', sunC: '#ff9d5c', sun: 0.55, hemi: 0.42, amb: 0.1 },
+    { t: 1170, sky: '#7270ad', sunC: '#c09ad8', sun: 0.22, hemi: 0.3,  amb: 0.1 },
+    { t: 1260, sky: '#27335f', sunC: '#a8bcff', sun: 0.16, hemi: 0.22, amb: 0.1 },
+    { t: 1380, sky: '#151d3d', sunC: '#9fb4ff', sun: 0.13, hemi: 0.18, amb: 0.1 },
+  ];
+  const cA = new THREE.Color(), cB = new THREE.Color();
+  const timeInput = document.getElementById('time'), timeLabel = document.getElementById('time-label');
+  let minutes = 605, playing = false;
+  function setTime(m) {
+    minutes = m;
+    let a = SKY_KEYS[0], b = SKY_KEYS[SKY_KEYS.length - 1];
+    for (let k = 0; k < SKY_KEYS.length - 1; k++) if (m >= SKY_KEYS[k].t && m <= SKY_KEYS[k + 1].t) { a = SKY_KEYS[k]; b = SKY_KEYS[k + 1]; break; }
+    const f = b.t === a.t ? 0 : (m - a.t) / (b.t - a.t);
+    const L = (x, y) => x + (y - x) * f;
+    scene.background.copy(cA.set(a.sky).lerp(cB.set(b.sky), f));
+    scene.fog.color.copy(scene.background);
+    sun.color.copy(cA.set(a.sunC).lerp(cB.set(b.sunC), f));
+    sun.intensity = L(a.sun, b.sun); hemi.intensity = L(a.hemi, b.hemi); amb.intensity = L(a.amb, b.amb);
+    const night = THREE.MathUtils.clamp((m - 1080) / 180, 0, 1) + THREE.MathUtils.clamp((390 - m) / 30, 0, 1) * 0.3;
+    hemi.color.copy(cA.set('#fff6e8').lerp(cB.set('#8796d6'), night));
+    cloudMat.color.copy(cA.set('#ffffff').lerp(cB.set('#7d86b8'), night));
+    houseMats.forEach(mt => { mt.emissive.set('#ffc26b'); mt.emissiveIntensity = night * 0.38; });
+    lamp.material.emissiveIntensity = 0.5 + night * 1.5;
+    if (m <= 1110) {
+      const ang = THREE.MathUtils.clamp((m - 360) / 750, 0, 1) * Math.PI;
+      sun.position.set(Math.cos(ang) * 14, 3 + Math.sin(ang) * 15, 8);
+    } else sun.position.set(-6, 16, 9);   // 月光
+    const hh = Math.floor(m / 60), mm = Math.floor(m % 60);
+    timeLabel.textContent = String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+    timeInput.value = Math.round(m);
+    timeInput.style.setProperty('--p', ((m - 360) / (1380 - 360) * 100) + '%');
+    renderLog(m);
+  }
+  timeInput.addEventListener('input', () => setTime(+timeInput.value));
+  const playBtn = document.getElementById('play');
+  playBtn.addEventListener('click', () => {
+    playing = !playing;
+    playBtn.textContent = playing ? '❚❚' : '▶';
+    playBtn.setAttribute('aria-label', playing ? '暫停' : '播放');
+  });
+  setTime(minutes);
+  styleLinks();
+
+  // 資訊卡位置跟著 Dock 高度
+  const dock = document.getElementById('dock');
+  const logCard = document.getElementById('log-card');
+  dock.style.zIndex = 20; info.style.zIndex = 30;
+  const placeInfo = () => {
+    const dh = dock.offsetHeight;
+    info.style.bottom = (dh + 28) + 'px';
+    const side = (window.innerWidth - dock.offsetWidth) / 2;
+    logCard.style.bottom = side >= logCard.offsetWidth + 28 ? '16px' : (dh + 28) + 'px';
+  };
+  placeInfo();
+
+  animate();
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    placeInfo();
+  });
+})();
+</script>
+</body>
+</html>
